@@ -22,7 +22,7 @@
 1. 构建站点产物
 
 ```bash
-cd /home/xsijie/workspaces/models-dev
+cd /your-path-to/models-dev
 bun install
 cd packages/web && bun run build
 cd ../..
@@ -32,10 +32,10 @@ cd ../..
 
 ```bash
 sudo mkdir -p /var/log/models-dev
-sudo chown -R xsijie:xsijie /var/log/models-dev
+sudo chown -R your-user:your-user /var/log/models-dev
 sudo chmod 755 /var/log/models-dev
 sudo touch /var/log/models-dev/out.log /var/log/models-dev/error.log
-sudo chown xsijie:xsijie /var/log/models-dev/out.log /var/log/models-dev/error.log
+sudo chown your-user:your-user /var/log/models-dev/out.log /var/log/models-dev/error.log
 sudo chmod 644 /var/log/models-dev/out.log /var/log/models-dev/error.log
 ```
 
@@ -51,7 +51,7 @@ pm2 status
 4. 配置 Nginx
 
 ```bash
-sudo cp /home/xsijie/workspaces/models-dev/deploy/intranet/nginx.models-dev.conf /etc/nginx/conf.d/models.dev.conf
+sudo cp /your-path-to/models-dev/deploy/intranet/nginx.models-dev.conf /etc/nginx/conf.d/models.dev.conf
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
@@ -70,7 +70,3 @@ pm2 logs models-dev
 pm2 stop models-dev
 pm2 delete models-dev
 ```
-
-## 关于 pnpm
-
-可以用 `pnpm` 管理依赖，但当前代码运行时依赖 Bun API（如 `Bun.serve`、`Bun.file`、`Bun.build`），所以服务进程和构建仍需要 Bun 执行。
