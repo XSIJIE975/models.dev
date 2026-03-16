@@ -5,6 +5,13 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  BASE_PATH_ENV,
+  getBasePath,
+  stripBasePath,
+  withBasePath,
+} from "../../packages/web/src/base-path.js";
+
 const scriptDirectory = fileURLToPath(new URL(".", import.meta.url));
 const rootDir = path.resolve(scriptDirectory, "..", "..");
 const requireFromWeb = createRequire(
@@ -20,7 +27,18 @@ const { serve } = requireFromWeb("@hono/node-server") as {
 const { Hono } = requireFromWeb("hono") as {
   Hono: new () => {
     fetch: (request: Request) => Response | Promise<Response>;
-    get: (...args: unknown[]) => unknown;
+    get: (
+      path: string,
+      handler: (context: {
+        req: { path: string };
+        body: (
+          body: string,
+          status?: number,
+          headers?: Record<string, string>
+        ) => Response;
+        text: (body: string, status?: number) => Response;
+      }) => Response | Promise<Response>
+    ) => unknown;
   };
 };
 const distDir = process.env.DIST_DIR
@@ -28,11 +46,15 @@ const distDir = process.env.DIST_DIR
   : path.join(rootDir, "packages", "web", "dist");
 const hostname = process.env.HOST ?? "0.0.0.0";
 const port = Number(process.env.PORT ?? "3000");
+const basePath = getBasePath(process.env[BASE_PATH_ENV]);
+const baseRootPath = withBasePath("/", basePath);
 
 const apiJsonPath = path.join(distDir, "_api.json");
 const indexPath = path.join(distDir, "_index.html");
 const faviconPath = path.join(distDir, "favicon.svg");
+const socialSharePath = path.join(distDir, "social-share.png");
 const assetsDir = path.join(distDir, "assets");
+const fontsDir = path.join(distDir, "fonts");
 const logosDir = path.join(distDir, "logos");
 const defaultLogoPath = path.join(logosDir, "default.svg");
 
@@ -79,6 +101,8 @@ const getContentType = (filePath: string) => {
       return "application/json; charset=utf-8";
     case ".svg":
       return "image/svg+xml";
+    case ".png":
+      return "image/png";
     case ".woff":
       return "font/woff";
     case ".woff2":
@@ -139,56 +163,82 @@ const buildModelSchema = async (): Promise<string> => {
 const redirectToRoot = () => {
   return new Response(null, {
     status: 302,
-    headers: { Location: "/" },
+    headers: { Location: baseRootPath },
   });
 };
 
 const app = new Hono();
 
-app.get("/api.json", async () => {
-  return createFileResponse(apiJsonPath);
-});
+app.get("*", async (context) => {
+  const requestPath = context.req.path;
 
-app.get("/model-schema.json", async (context) => {
-  try {
-    const body = await buildModelSchema();
-    return context.body(body, 200, {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "public, max-age=3600",
-    });
-  } catch {
-    return context.text("Failed to build model schema", 500);
-  }
-});
-
-app.get("/logos/*", async (context) => {
-  const requestedPath = context.req.path.slice("/logos/".length);
-  const logoPath = resolveSafePath(logosDir, requestedPath);
-  const filePath = logoPath && (await pathExists(logoPath)) ? logoPath : defaultLogoPath;
-
-  return createFileResponse(filePath);
-});
-
-app.get("/assets/*", async (context) => {
-  const requestedPath = context.req.path.slice("/assets/".length);
-  const assetPath = resolveSafePath(assetsDir, requestedPath);
-
-  if (!assetPath || !(await pathExists(assetPath))) {
+  if (basePath !== "/" && requestPath === basePath) {
     return redirectToRoot();
   }
 
-  return createFileResponse(assetPath);
-});
+  const appPath = stripBasePath(requestPath, basePath);
 
-app.get("/favicon.svg", async () => {
-  return createFileResponse(faviconPath);
-});
+  if (!appPath) {
+    return context.text("Not found", 404);
+  }
 
-app.get("/", async () => {
-  return createFileResponse(indexPath);
-});
+  if (appPath === "/api.json") {
+    return createFileResponse(apiJsonPath);
+  }
 
-app.get("*", () => {
+  if (appPath === "/model-schema.json") {
+    try {
+      const body = await buildModelSchema();
+      return context.body(body, 200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "public, max-age=3600",
+      });
+    } catch {
+      return context.text("Failed to build model schema", 500);
+    }
+  }
+
+  if (appPath.startsWith("/logos/")) {
+    const requestedPath = appPath.slice("/logos/".length);
+    const logoPath = resolveSafePath(logosDir, requestedPath);
+    const filePath = logoPath && (await pathExists(logoPath)) ? logoPath : defaultLogoPath;
+    return createFileResponse(filePath);
+  }
+
+  if (appPath.startsWith("/assets/")) {
+    const requestedPath = appPath.slice("/assets/".length);
+    const assetPath = resolveSafePath(assetsDir, requestedPath);
+
+    if (!assetPath || !(await pathExists(assetPath))) {
+      return redirectToRoot();
+    }
+
+    return createFileResponse(assetPath);
+  }
+
+  if (appPath.startsWith("/fonts/")) {
+    const requestedPath = appPath.slice("/fonts/".length);
+    const fontPath = resolveSafePath(fontsDir, requestedPath);
+
+    if (!fontPath || !(await pathExists(fontPath))) {
+      return redirectToRoot();
+    }
+
+    return createFileResponse(fontPath);
+  }
+
+  if (appPath === "/favicon.svg") {
+    return createFileResponse(faviconPath);
+  }
+
+  if (appPath === "/social-share.png") {
+    return createFileResponse(socialSharePath);
+  }
+
+  if (appPath === "/" || appPath === "/index" || appPath === "/index.html") {
+    return createFileResponse(indexPath);
+  }
+
   return redirectToRoot();
 });
 
