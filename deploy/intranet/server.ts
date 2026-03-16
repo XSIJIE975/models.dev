@@ -1,6 +1,28 @@
-import path from "node:path";
+#!/usr/bin/env tsx
 
-const rootDir = path.resolve(import.meta.dir, "..", "..");
+import { access, readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const scriptDirectory = fileURLToPath(new URL(".", import.meta.url));
+const rootDir = path.resolve(scriptDirectory, "..", "..");
+const requireFromWeb = createRequire(
+  path.join(rootDir, "packages", "web", "package.json")
+);
+const { serve } = requireFromWeb("@hono/node-server") as {
+  serve: (options: {
+    fetch: (request: Request) => Response | Promise<Response>;
+    hostname: string;
+    port: number;
+  }) => unknown;
+};
+const { Hono } = requireFromWeb("hono") as {
+  Hono: new () => {
+    fetch: (request: Request) => Response | Promise<Response>;
+    get: (...args: unknown[]) => unknown;
+  };
+};
 const distDir = process.env.DIST_DIR
   ? path.resolve(process.env.DIST_DIR)
   : path.join(rootDir, "packages", "web", "dist");
@@ -9,20 +31,86 @@ const port = Number(process.env.PORT ?? "3000");
 
 const apiJsonPath = path.join(distDir, "_api.json");
 const indexPath = path.join(distDir, "_index.html");
-const defaultLogoPath = path.join(distDir, "logos", "default.svg");
+const faviconPath = path.join(distDir, "favicon.svg");
+const assetsDir = path.join(distDir, "assets");
+const logosDir = path.join(distDir, "logos");
+const defaultLogoPath = path.join(logosDir, "default.svg");
 
 type ProviderData = Record<string, { models?: Record<string, unknown> }>;
 
 let modelSchemaCache = "";
 let modelSchemaCacheAt = 0;
 
-async function buildModelSchema(): Promise<string> {
+const pathExists = async (targetPath: string) => {
+  try {
+    await access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const resolveSafePath = (basePath: string, requestPath: string) => {
+  const cleanedPath = requestPath.replace(/^\/+/, "");
+  const resolvedPath = path.resolve(basePath, cleanedPath);
+
+  if (
+    resolvedPath !== basePath &&
+    !resolvedPath.startsWith(`${basePath}${path.sep}`)
+  ) {
+    return null;
+  }
+
+  return resolvedPath;
+};
+
+const getContentType = (filePath: string) => {
+  switch (path.extname(filePath).toLowerCase()) {
+    case ".css":
+      return "text/css; charset=utf-8";
+    case ".html":
+      return "text/html; charset=utf-8";
+    case ".js":
+    case ".mjs":
+      return "text/javascript; charset=utf-8";
+    case ".json":
+      return "application/json; charset=utf-8";
+    case ".map":
+      return "application/json; charset=utf-8";
+    case ".svg":
+      return "image/svg+xml";
+    case ".woff":
+      return "font/woff";
+    case ".woff2":
+      return "font/woff2";
+    default:
+      return "application/octet-stream";
+  }
+};
+
+const createFileResponse = async (
+  filePath: string,
+  cacheControl = "public, max-age=3600"
+) => {
+  const body = await readFile(filePath);
+
+  return new Response(body, {
+    headers: {
+      "Content-Type": getContentType(filePath),
+      "Cache-Control": cacheControl,
+    },
+  });
+};
+
+const buildModelSchema = async (): Promise<string> => {
   const now = Date.now();
   if (modelSchemaCache && now - modelSchemaCacheAt < 60_000) {
     return modelSchemaCache;
   }
 
-  const providers = (await Bun.file(apiJsonPath).json()) as ProviderData;
+  const providers = JSON.parse(
+    await readFile(apiJsonPath, "utf8")
+  ) as ProviderData;
   const modelIds: string[] = [];
 
   for (const [providerId, provider] of Object.entries(providers)) {
@@ -46,85 +134,69 @@ async function buildModelSchema(): Promise<string> {
   modelSchemaCache = JSON.stringify(schema, null, 2);
   modelSchemaCacheAt = now;
   return modelSchemaCache;
-}
+};
 
-function redirectToRoot(): Response {
+const redirectToRoot = () => {
   return new Response(null, {
     status: 302,
     headers: { Location: "/" },
   });
-}
+};
 
-function resolveDistPath(pathname: string): string {
-  return path.join(distDir, pathname.replace(/^\/+/, ""));
-}
+const app = new Hono();
 
-const server = Bun.serve({
-  hostname,
-  port,
-  async fetch(request) {
-    const url = new URL(request.url);
-
-    if (url.pathname === "/model-schema.json") {
-      try {
-        const body = await buildModelSchema();
-        return new Response(body, {
-          headers: {
-            "Content-Type": "application/json",
-            "Cache-Control": "public, max-age=3600",
-          },
-        });
-      } catch {
-        return new Response("Failed to build model schema", { status: 500 });
-      }
-    }
-
-    if (url.pathname === "/api.json") {
-      return new Response(Bun.file(apiJsonPath), {
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": "public, max-age=3600",
-        },
-      });
-    }
-
-    if (
-      url.pathname === "/" ||
-      url.pathname === "/index" ||
-      url.pathname === "/index.html"
-    ) {
-      return new Response(Bun.file(indexPath), {
-        headers: {
-          "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "public, max-age=3600",
-        },
-      });
-    }
-
-    if (url.pathname.startsWith("/logos/")) {
-      const logoFilePath = resolveDistPath(url.pathname);
-      let file = Bun.file(logoFilePath);
-      if (!(await file.exists())) {
-        file = Bun.file(defaultLogoPath);
-      }
-
-      return new Response(file, {
-        headers: {
-          "Content-Type": "image/svg+xml",
-          "Cache-Control": "public, max-age=3600",
-        },
-      });
-    }
-
-    const staticFilePath = resolveDistPath(url.pathname);
-    const staticFile = Bun.file(staticFilePath);
-    if (await staticFile.exists()) {
-      return new Response(staticFile);
-    }
-
-    return redirectToRoot();
-  },
+app.get("/api.json", async () => {
+  return createFileResponse(apiJsonPath);
 });
 
-console.log(`models.dev intranet server listening on ${server.hostname}:${server.port}`);
+app.get("/model-schema.json", async (context) => {
+  try {
+    const body = await buildModelSchema();
+    return context.body(body, 200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "public, max-age=3600",
+    });
+  } catch {
+    return context.text("Failed to build model schema", 500);
+  }
+});
+
+app.get("/logos/*", async (context) => {
+  const requestedPath = context.req.path.slice("/logos/".length);
+  const logoPath = resolveSafePath(logosDir, requestedPath);
+  const filePath = logoPath && (await pathExists(logoPath)) ? logoPath : defaultLogoPath;
+
+  return createFileResponse(filePath);
+});
+
+app.get("/assets/*", async (context) => {
+  const requestedPath = context.req.path.slice("/assets/".length);
+  const assetPath = resolveSafePath(assetsDir, requestedPath);
+
+  if (!assetPath || !(await pathExists(assetPath))) {
+    return redirectToRoot();
+  }
+
+  return createFileResponse(assetPath);
+});
+
+app.get("/favicon.svg", async () => {
+  return createFileResponse(faviconPath);
+});
+
+app.get("/", async () => {
+  return createFileResponse(indexPath);
+});
+
+app.get("*", () => {
+  return redirectToRoot();
+});
+
+serve({
+  fetch: app.fetch,
+  hostname,
+  port,
+});
+
+console.log(`models.dev intranet server listening on ${hostname}:${port}`);
 console.log(`serving dist from ${distDir}`);

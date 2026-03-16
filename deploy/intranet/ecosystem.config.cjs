@@ -3,11 +3,10 @@ module.exports = {
     {
       name: "models-dev-mirror",
       cwd: "/opt/models-dev-mirror",
-      script: "bun",
+      script: "pnpm",
       args: "run intranet:serve",
-      interpreter: "none",
       env: {
-        PORT: "3086",
+        PORT: "3000",
       },
       autorestart: true,
       max_restarts: 10,
