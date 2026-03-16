@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env tsx
 
 /**
  * Generates Vercel model TOML files from the AI Gateway API.
@@ -10,8 +10,13 @@
 
 import { z } from "zod";
 import path from "node:path";
-import { mkdir } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import glob from "fast-glob";
+import { parse } from "@iarna/toml";
 import { ModelFamilyValues } from "../src/family.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const API_ENDPOINT = "https://ai-gateway.vercel.sh/v1/models";
 
@@ -221,13 +226,13 @@ function buildOutputModalities(modelType: ModelType, tags: string[]): string[] {
 
 async function loadExistingModel(filePath: string): Promise<ExistingModel | null> {
   try {
-    const file = Bun.file(filePath);
-    if (!(await file.exists())) {
+    try {
+      await access(filePath);
+    } catch {
       return null;
     }
-    const toml = await import(filePath, { with: { type: "toml" } }).then(
-      (mod) => mod.default,
-    );
+
+    const toml = parse(await readFile(filePath, "utf8"));
     return toml as ExistingModel;
   } catch (e) {
     console.warn(`Warning: Failed to parse existing file ${filePath}:`, e);
@@ -459,7 +464,7 @@ async function main() {
   const newOnly = args.includes("--new-only");
 
   const modelsDir = path.join(
-    import.meta.dirname,
+    __dirname,
     "..",
     "..",
     "..",
@@ -487,9 +492,10 @@ async function main() {
 
   const existingFiles = new Set<string>();
   try {
-    for await (const file of new Bun.Glob("**/*.toml").scan({
+    for (const file of await glob("**/*.toml", {
       cwd: modelsDir,
       absolute: false,
+      followSymbolicLinks: true,
     })) {
       existingFiles.add(file);
     }
@@ -529,11 +535,11 @@ async function main() {
           console.log(`  family = "${merged.family}" (inferred)`);
         }
         console.log("");
-      } else {
-        await mkdir(dirPath, { recursive: true });
-        await Bun.write(filePath, tomlContent);
-        console.log(`Created: ${relativePath}`);
-      }
+        } else {
+          await mkdir(dirPath, { recursive: true });
+          await writeFile(filePath, tomlContent);
+          console.log(`Created: ${relativePath}`);
+        }
     } else {
       if (newOnly) {
         unchanged++;
@@ -548,7 +554,7 @@ async function main() {
           console.log(`[DRY RUN] Would update: ${relativePath}`);
         } else {
           await mkdir(dirPath, { recursive: true });
-          await Bun.write(filePath, tomlContent);
+          await writeFile(filePath, tomlContent);
           console.log(`Updated: ${relativePath}`);
         }
         for (const change of changes) {

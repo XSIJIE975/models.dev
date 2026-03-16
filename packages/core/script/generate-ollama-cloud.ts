@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env tsx
 
 /**
  * Generates model files from the data in Ollama Cloud's API.
@@ -13,12 +13,19 @@
 
 import { z } from "zod";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { readFile, unlink, writeFile } from "node:fs/promises";
+import { isDeepStrictEqual } from "node:util";
+import { sync as globSync } from "fast-glob";
+import { parse } from "@iarna/toml";
 
 import type { Model } from "../src/schema";
 import type { ModelFamily } from "../src/family";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 const modelsDir = path.join(
-  import.meta.dirname,
+  __dirname,
   "..",
   "..",
   "..",
@@ -164,7 +171,7 @@ for (const modelName of modelNames) {
 
 console.log(`Fetched all models. Syncing files...`);
 
-const existingFiles = Array.from(new Bun.Glob("*.toml").scanSync(modelsDir));
+const existingFiles = globSync("*.toml", { cwd: modelsDir, absolute: false });
 const existingModelNames = new Set(existingFiles.map((f) => f.replace(/\.toml$/, "")));
 const apiModelNames = new Set(modelNames);
 
@@ -172,7 +179,7 @@ let deleted = 0;
 for (const existingName of existingModelNames) {
   if (!apiModelNames.has(existingName)) {
     const filePath = path.join(modelsDir, modelFileName(existingName));
-    await Bun.file(filePath).delete();
+    await unlink(filePath);
     console.log(`Deleted: ${modelFileName(existingName)}`);
     deleted++;
   }
@@ -186,8 +193,8 @@ for (const { name, data } of modelsData) {
 
   let existingData: Omit<Model, "id"> | null = null;
   try {
-    const existingToml = await Bun.file(filePath).text();
-    existingData = Bun.TOML.parse(existingToml) as Omit<Model, "id">;
+    const existingToml = await readFile(filePath, "utf8");
+    existingData = parse(existingToml) as Omit<Model, "id">;
   } catch {
     // File doesn't exist
   }
@@ -222,14 +229,14 @@ for (const { name, data } of modelsData) {
     const normalizedExisting = normalizeForComparison(existingData);
     const normalizedIncoming = normalizeForComparison(ollamaModel);
 
-    if (Bun.deepEquals(normalizedExisting, normalizedIncoming)) {
+    if (isDeepStrictEqual(normalizedExisting, normalizedIncoming)) {
       console.log(`Skipped (no changes): ${fileName}`);
       skipped++;
       continue;
     }
   }
 
-  await Bun.write(filePath, generateToml(name, ollamaModel));
+  await writeFile(filePath, generateToml(name, ollamaModel));
   console.log(`Created: ${fileName}`);
   created++;
 }

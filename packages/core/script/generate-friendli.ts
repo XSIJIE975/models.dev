@@ -1,8 +1,13 @@
-#!/usr/bin/env bun
+#!/usr/bin/env tsx
 
-import { mkdir } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import glob from "fast-glob";
+import { parse } from "@iarna/toml";
 import { z } from "zod";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Friendli API endpoint
 const API_ENDPOINT = "https://api.friendli.ai/serverless/v1/models";
@@ -145,13 +150,13 @@ async function loadExistingModel(
   filePath: string,
 ): Promise<ExistingModel | null> {
   try {
-    const file = Bun.file(filePath);
-    if (!(await file.exists())) {
+    try {
+      await access(filePath);
+    } catch {
       return null;
     }
-    const toml = await import(filePath, { with: { type: "toml" } }).then(
-      (mod) => mod.default,
-    );
+
+    const toml = parse(await readFile(filePath, "utf8"));
     return toml as ExistingModel;
   } catch (e) {
     console.warn(`Warning: Failed to parse existing file ${filePath}:`, e);
@@ -379,7 +384,7 @@ async function main() {
   const dryRun = args.includes("--dry-run");
 
   const modelsDir = path.join(
-    import.meta.dirname,
+    __dirname,
     "..",
     "..",
     "..",
@@ -413,9 +418,10 @@ async function main() {
   // Get existing files (recursively)
   const existingFiles = new Set<string>();
   try {
-    for await (const file of new Bun.Glob("**/*.toml").scan({
+    for (const file of await glob("**/*.toml", {
       cwd: modelsDir,
       absolute: false,
+      followSymbolicLinks: true,
     })) {
       existingFiles.add(file);
     }
@@ -456,7 +462,7 @@ async function main() {
         console.log("");
       } else {
         await mkdir(dirPath, { recursive: true });
-        await Bun.write(filePath, tomlContent);
+        await writeFile(filePath, tomlContent);
         console.log(`Created: ${relativePath}`);
       }
     } else {
@@ -467,7 +473,7 @@ async function main() {
         if (dryRun) {
           console.log(`[DRY RUN] Would update: ${relativePath}`);
         } else {
-          await Bun.write(filePath, tomlContent);
+          await writeFile(filePath, tomlContent);
           console.log(`Updated: ${relativePath}`);
         }
         for (const change of changes) {

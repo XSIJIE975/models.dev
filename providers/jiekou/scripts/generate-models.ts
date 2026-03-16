@@ -1,8 +1,9 @@
-#!/usr/bin/env bun
+#!/usr/bin/env tsx
 
 import { z } from "zod";
-import path from "node:path";
-import { readdir, mkdir, unlink, rmdir } from "node:fs/promises";
+import path, { dirname } from "node:path";
+import { readdir, mkdir, unlink, rmdir, readFile, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { ModelFamilyValues } from "../../../packages/core/src/family.js";
 
 // Jiekou.AI API endpoint
@@ -348,8 +349,7 @@ async function cleanupSkippedModels(
   for (const relativePath of existingFiles) {
     const filePath = path.join(modelsDir, relativePath);
     try {
-      const file = Bun.file(filePath);
-      const content = await file.text();
+      const content = await readFile(filePath, "utf8");
       const modelName = extractModelName(content);
 
       if (modelName && shouldSkipModel(modelName)) {
@@ -383,7 +383,7 @@ async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes("--dry-run");
 
-  const modelsDir = path.join(import.meta.dirname, "..", "models");
+  const modelsDir = path.join(dirname(fileURLToPath(import.meta.url)), "..", "models");
 
   if (dryRun) {
     console.log("[DRY RUN] Fetching Jiekou.AI models from API...");
@@ -470,7 +470,7 @@ async function main() {
       console.log("");
     } else {
       await ensureDir(dirPath);
-      await Bun.write(filePath, tomlContent);
+      await writeFile(filePath, tomlContent);
       console.log(`Created: ${relativePath}`);
     }
   }

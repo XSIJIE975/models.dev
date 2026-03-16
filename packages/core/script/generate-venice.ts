@@ -1,9 +1,13 @@
-#!/usr/bin/env bun
+#!/usr/bin/env tsx
 
 import { z } from "zod";
 import path from "node:path";
-import { readdir } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { access, readFile, readdir, writeFile } from "node:fs/promises";
+import { parse } from "@iarna/toml";
 import { ModelFamilyValues } from "../src/family.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Venice API endpoint
 const API_ENDPOINT = "https://api.venice.ai/api/v1/models?type=text";
@@ -181,13 +185,13 @@ interface ExistingModel {
 
 async function loadExistingModel(filePath: string): Promise<ExistingModel | null> {
   try {
-    const file = Bun.file(filePath);
-    if (!(await file.exists())) {
+    try {
+      await access(filePath);
+    } catch {
       return null;
     }
-    const toml = await import(filePath, { with: { type: "toml" } }).then(
-      (mod) => mod.default,
-    );
+
+    const toml = parse(await readFile(filePath, "utf8"));
     return toml as ExistingModel;
   } catch (e) {
     console.warn(`Warning: Failed to parse existing file ${filePath}:`, e);
@@ -456,7 +460,7 @@ async function main() {
   const dryRun = args.includes("--dry-run");
 
   const modelsDir = path.join(
-    import.meta.dirname,
+    __dirname,
     "..",
     "..",
     "..",
@@ -566,7 +570,7 @@ async function main() {
         }
         console.log("");
       } else {
-        await Bun.write(filePath, tomlContent);
+        await writeFile(filePath, tomlContent);
         console.log(`Created: ${filename}`);
       }
     } else {
@@ -578,7 +582,7 @@ async function main() {
         if (dryRun) {
           console.log(`[DRY RUN] Would update: ${filename}`);
         } else {
-          await Bun.write(filePath, tomlContent);
+          await writeFile(filePath, tomlContent);
           console.log(`Updated: ${filename}`);
         }
         for (const change of changes) {

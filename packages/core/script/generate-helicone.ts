@@ -1,8 +1,11 @@
-#!/usr/bin/env bun
+#!/usr/bin/env tsx
 
 import { z } from "zod";
 import path from "node:path";
-import { mkdir, rm, readdir, stat } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { mkdir, rm, readdir, stat, writeFile } from "node:fs/promises";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Helicone public model registry endpoint
 const DEFAULT_ENDPOINT =
@@ -153,7 +156,7 @@ async function main() {
   const endpoint = DEFAULT_ENDPOINT;
 
   const outDir = path.join(
-    import.meta.dirname,
+    __dirname,
     "..",
     "..",
     "..",
@@ -196,7 +199,7 @@ async function main() {
     const fileSafeId = m.id.replaceAll("/", "-");
     const filePath = path.join(outDir, `${fileSafeId}.toml`);
     const toml = formatToml(m);
-    await Bun.write(filePath, toml);
+    await writeFile(filePath, toml);
     created++;
   }
 

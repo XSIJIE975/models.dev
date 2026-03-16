@@ -1,19 +1,20 @@
 import path from "path";
+import { readFile } from "fs/promises";
+
+import glob from "fast-glob";
+import { parse } from "@iarna/toml";
 
 import { Provider, Model } from "./schema.js";
 
 export async function generate(directory: string) {
   const result = {} as Record<string, Provider>;
-  for await (const providerPath of new Bun.Glob("*/provider.toml").scan({
+  const providerPaths = await glob("*/provider.toml", {
     cwd: directory,
     absolute: true,
-  })) {
+  });
+  for (const providerPath of providerPaths) {
     const providerID = path.basename(path.dirname(providerPath));
-    const toml = await import(providerPath, {
-      with: {
-        type: "toml",
-      },
-    }).then((mod) => mod.default);
+    const toml = parse(await readFile(providerPath, "utf8")) as Record<string, unknown>;
     toml.id = providerID;
     toml.models = {};
     const provider = Provider.safeParse(toml);
@@ -23,17 +24,14 @@ export async function generate(directory: string) {
     }
 
     const modelsPath = path.join(directory, providerID, "models");
-    for await (const modelPath of new Bun.Glob("**/*.toml").scan({
+    const modelPaths = await glob("**/*.toml", {
       cwd: modelsPath,
       absolute: true,
-      followSymlinks: true,
-    })) {
+      followSymbolicLinks: true,
+    });
+    for (const modelPath of modelPaths) {
       const modelID = path.relative(modelsPath, modelPath).slice(0, -5);
-      const toml = await import(modelPath, {
-        with: {
-          type: "toml",
-        },
-      }).then((mod) => mod.default);
+      const toml = parse(await readFile(modelPath, "utf8")) as Record<string, unknown>;
       toml.id = modelID;
       const model = Model.safeParse(toml);
       if (!model.success) {

@@ -1,9 +1,14 @@
-#!/usr/bin/env bun
+#!/usr/bin/env tsx
 
 import path from "node:path";
-import { mkdir } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import glob from "fast-glob";
+import { parse } from "@iarna/toml";
 import { z } from "zod";
 import { ModelFamilyValues } from "../src/family.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const API_ENDPOINT = "https://trace.wandb.ai/inference/analysis/artificialanalysis/models";
 
@@ -219,12 +224,13 @@ function normalizeModalities(values: string[]): SupportedModality[] {
 
 async function loadExistingModel(filePath: string): Promise<ExistingModel | null> {
   try {
-    const file = Bun.file(filePath);
-    if (!(await file.exists())) {
+    try {
+      await access(filePath);
+    } catch {
       return null;
     }
 
-    const toml = await import(filePath, { with: { type: "toml" } }).then((mod) => mod.default);
+    const toml = parse(await readFile(filePath, "utf8"));
     return toml as ExistingModel;
   } catch (cause) {
     console.warn(`Warning: Failed to parse existing file ${filePath}:`, cause);
@@ -424,7 +430,7 @@ async function main() {
   const dryRun = args.includes("--dry-run");
   const newOnly = args.includes("--new-only");
 
-  const modelsDir = path.join(import.meta.dirname, "..", "..", "..", "providers", "wandb", "models");
+  const modelsDir = path.join(__dirname, "..", "..", "..", "providers", "wandb", "models");
 
   console.log(`${dryRun ? "[DRY RUN] " : ""}${newOnly ? "[NEW ONLY] " : ""}Fetching WandB models from API...`);
 
@@ -444,7 +450,7 @@ async function main() {
   const apiModels = parsed.data.data;
   const existingFiles = new Set<string>();
 
-  for await (const file of new Bun.Glob("**/*.toml").scan({ cwd: modelsDir, absolute: false })) {
+  for (const file of await glob("**/*.toml", { cwd: modelsDir, absolute: false, followSymbolicLinks: true })) {
     existingFiles.add(file);
   }
 
@@ -477,7 +483,7 @@ async function main() {
         console.log("");
       } else {
         await mkdir(dirPath, { recursive: true });
-        await Bun.write(filePath, tomlContent);
+        await writeFile(filePath, tomlContent);
         console.log(`Created: ${relativePath}`);
       }
       continue;
@@ -499,7 +505,7 @@ async function main() {
       console.log(`[DRY RUN] Would update: ${relativePath}`);
     } else {
       await mkdir(dirPath, { recursive: true });
-      await Bun.write(filePath, tomlContent);
+      await writeFile(filePath, tomlContent);
       console.log(`Updated: ${relativePath}`);
     }
 
