@@ -3,13 +3,13 @@ Vercel AI Gateway Models
 Generate model TOMLs from Vercel AI Gateway API.
 
 Prerequisites
-- Install Bun: https://bun.sh
+- Node.js 22+ and pnpm
 
 Commands
-- Generate files: `bun run vercel:generate`
-- Dry run: `bun run vercel:generate --dry-run`
-- New only: `bun run vercel:generate --new-only`
-- Validate: `bun validate`
+- Generate files: `pnpm vercel:generate`
+- Dry run: `pnpm vercel:generate --dry-run`
+- New only: `pnpm vercel:generate --new-only`
+- Validate: `pnpm validate`
 
 Details
 - Source endpoint: `https://ai-gateway.vercel.sh/v1/models`

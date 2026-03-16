@@ -1,25 +1,26 @@
 # Agent Guidelines for models.dev
 
 ## Commands
-- **Validate**: `bun validate` - Validates all provider/model configurations
-- **Build web**: `cd packages/web && bun run build` - Builds the web interface
-- **Dev server**: `cd packages/web && bun run dev` - Runs development server
+- **Validate**: `pnpm validate` - Validates all provider/model configurations
+- **Build web**: `pnpm build` - Builds the web interface (runs `packages/web` build via pnpm)
+- **Dev server**: `pnpm dev` - Runs development server on port 16000
+- **Intranet serve**: `pnpm intranet:serve` - Runs intranet server via tsx
 - **No test framework** - No dedicated test commands found
 
 ## Code Style
-- **Runtime**: Bun with TypeScript ESM modules
+- **Runtime**: Node.js 22+ with TypeScript ESM modules, executed via tsx
 - **Imports**: Use `.js` extensions for local imports (e.g., `./schema.js`)
 - **Types**: Strict Zod schemas for validation, inferred types with `z.infer<typeof Schema>`
 - **Naming**: camelCase for variables/functions, PascalCase for types/schemas
 - **Error handling**: Use Zod's `safeParse()` with structured error objects including `cause`
 - **Async**: Use `async/await`, `for await` loops for file operations
-- **File operations**: Use Bun's native APIs (`Bun.Glob`, `Bun.file`, `Bun.write`)
+- **File operations**: Use Node.js native APIs (`node:fs/promises`, `fast-glob` for glob patterns)
 
 ## Architecture
 - **Monorepo**: Workspace packages in `packages/` (core, web, function)
 - **Config**: TOML files for providers/models in `providers/` directory
 - **Validation**: Core package validates all configurations via `generate()` function
-- **Web**: Static site generation with Hono server and vanilla TypeScript
+- **Web**: Static site generation with Vite, Hono server and vanilla TypeScript
 - **Deploy**: Cloudflare Workers for function, static assets for web
 
 ## Conventions

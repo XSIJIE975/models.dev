@@ -12,7 +12,7 @@
 
 ## 变更清单（仅保留 PM2 必需项）
 
-- `deploy/intranet/server.ts`：内网 Bun 服务，复刻线上 Worker 路由
+- `deploy/intranet/server.ts`：内网 Node.js 服务，复刻线上 Worker 路由
 - `deploy/intranet/nginx.models-dev.conf`：Nginx 反向代理到 `127.0.0.1:3000`
 - `deploy/intranet/ecosystem.config.cjs`：PM2 进程配置（日志写入 `/var/log/models-dev`）
 - `package.json`：新增 `intranet:serve` 脚本
@@ -23,9 +23,8 @@
 
 ```bash
 cd /your-path-to/models-dev
-bun install
-cd packages/web && bun run build
-cd ../..
+pnpm install
+pnpm build
 ```
 
 2. 配置日志目录权限（按你的 PM2 用户）

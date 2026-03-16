@@ -3,11 +3,11 @@ Helicone Models
 Generate model TOMLs from Helicone’s public registry.
 
 Prerequisites
-- Install Bun: https://bun.sh
+- Node.js 22+ and pnpm
 
 Commands
-- Generate files: `bun run helicone:generate`
-- Validate configs: `bun validate`
+- Generate files: `pnpm helicone:generate`
+- Validate configs: `pnpm validate`
 
 Details
 - Source endpoint: `https://jawn.helicone.ai/v1/public/model-registry/models`

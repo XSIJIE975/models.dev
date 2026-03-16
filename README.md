@@ -189,24 +189,24 @@ See existing providers in the `providers/` directory for reference:
 
 ### Working on frontend
 
-Make sure you have [Bun](https://bun.sh/) installed.
+Make sure you have [Node.js](https://nodejs.org/) 22+ installed.
 
 ```bash
-$ bun install
+$ pnpm install
 $ cd packages/web
-$ bun run dev
+$ pnpm dev
 ```
 
-And it'll open the frontend at http://localhost:3000
+And it'll open the frontend at http://localhost:16000
 
 ### Manual testing with opencode
 
 You can manually check provider changes with opencode by:
 
 ```bash
-$ bun install
+$ pnpm install
 $ cd packages/web
-$ bun run build
+$ pnpm build
 $ OPENCODE_MODELS_PATH="dist/_api.json" opencode
 ```
 
