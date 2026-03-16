@@ -1,5 +1,13 @@
+import {
+  BASE_PATH_ENV,
+  getBasePath,
+  stripBasePath,
+  withBasePath,
+} from "../../web/src/base-path.js";
+
 export interface Env {
   ASSETS: any;
+  MODELS_DEV_BASE_PATH?: string;
   PosthogToken: string;
 }
 
@@ -10,9 +18,24 @@ export default {
     ctx: ExecutionContext,
   ): Promise<Response> {
     const url = new URL(request.url);
+    const basePath = getBasePath(env[BASE_PATH_ENV]);
+    const baseRootPath = withBasePath("/", basePath);
+    const appPath = stripBasePath(url.pathname, basePath);
     const ip = request.headers.get("cf-connecting-ip") || "unknown";
     const country = request.headers.get("cf-ipcountry") || "unknown";
     const agent = request.headers.get("user-agent") || "unknown";
+
+    if (basePath !== "/" && url.pathname === basePath) {
+      return new Response(null, {
+        status: 302,
+        headers: { Location: baseRootPath },
+      });
+    }
+
+    if (!appPath) {
+      return new Response("Not found", { status: 404 });
+    }
+
     if (agent.includes("opencode") || agent.includes("bun")) {
       ctx.waitUntil(
         fetch("https://us.i.posthog.com/i/v0/e/", {
@@ -35,7 +58,10 @@ export default {
       );
     }
 
-    if (url.pathname === "/model-schema.json") {
+    const assetUrl = new URL(url);
+    assetUrl.pathname = appPath;
+
+    if (appPath === "/model-schema.json") {
       const apiUrl = new URL(url);
       apiUrl.pathname = "/_api.json";
       const apiResponse = await env.ASSETS.fetch(
@@ -73,34 +99,40 @@ export default {
       });
     }
 
-    if (url.pathname === "/api.json") {
-      url.pathname = "/_api.json";
+    if (appPath === "/api.json") {
+      assetUrl.pathname = "/_api.json";
     } else if (
-      url.pathname === "/" ||
-      url.pathname === "/index.html" ||
-      url.pathname === "/index"
+      appPath === "/" ||
+      appPath === "/index.html" ||
+      appPath === "/index"
     ) {
-      url.pathname = "/_index";
-    } else if (url.pathname.startsWith("/logos/")) {
+      assetUrl.pathname = "/_index";
+    } else if (appPath.startsWith("/logos/")) {
       // Check if the specific provider logo exists in static assets
-      const logoResponse = await env.ASSETS.fetch(new Request(url.toString(), request));
+      const logoResponse = await env.ASSETS.fetch(new Request(assetUrl.toString(), request));
 
       if (logoResponse.status === 404) {
         // Fallback to default logo
-        const defaultUrl = new URL(url);
+        const defaultUrl = new URL(assetUrl);
         defaultUrl.pathname = "/logos/default.svg";
         return await env.ASSETS.fetch(new Request(defaultUrl.toString(), request));
       }
 
       return logoResponse;
+    } else if (
+      appPath.startsWith("/assets/") ||
+      appPath.startsWith("/fonts/") ||
+      appPath === "/favicon.svg" ||
+      appPath === "/social-share.png"
+    ) {
+      assetUrl.pathname = appPath;
     } else {
-      // redirect to "/"
       return new Response(null, {
         status: 302,
-        headers: { Location: "/" },
+        headers: { Location: baseRootPath },
       });
     }
 
-    return await env.ASSETS.fetch(new Request(url.toString(), request));
+    return await env.ASSETS.fetch(new Request(assetUrl.toString(), request));
   },
 };
