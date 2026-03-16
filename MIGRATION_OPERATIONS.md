@@ -10,8 +10,11 @@
 |------|------|
 | 验证配置 | `pnpm validate` |
 | 开发服务器（端口 16000） | `pnpm dev` |
+| 子路径开发服务器 | `MODELS_DEV_BASE_PATH=/models-dev-mirror pnpm dev` |
 | 构建站点 | `pnpm build` |
+| 子路径构建 | `MODELS_DEV_BASE_PATH=/models-dev-mirror pnpm build` |
 | 内网服务（端口 3000） | `pnpm intranet:serve` |
+| 子路径内网服务 | `MODELS_DEV_BASE_PATH=/models-dev-mirror pnpm intranet:serve` |
 | 安装依赖 | `pnpm install` |
 
 ---
@@ -20,6 +23,15 @@
 
 - Node.js 22+
 - pnpm
+
+### 可选环境变量
+
+| 变量 | 用途 | 默认值 |
+|------|------|--------|
+| `MODELS_DEV_BASE_PATH` | 配置站点部署子路径，例如 `/models-dev-mirror` | `/` |
+| `PORT` | 内网服务监听端口 | `3000` |
+| `HOST` | 内网服务监听地址 | `0.0.0.0` |
+| `DIST_DIR` | 指定内网服务读取的构建产物目录 | `packages/web/dist` |
 
 ---
 
@@ -43,6 +55,33 @@ pnpm dev
 
 底层执行的是 `packages/web/src/dev-server.ts`，使用 Vite middleware 模式。
 
+如果需要模拟 `/models-dev-mirror` 这类子路径部署，需要在启动开发服务器时传入 `MODELS_DEV_BASE_PATH`：
+
+**Linux / macOS：**
+
+```bash
+MODELS_DEV_BASE_PATH=/models-dev-mirror pnpm dev
+```
+
+**Windows CMD：**
+
+```cmd
+set MODELS_DEV_BASE_PATH=/models-dev-mirror
+pnpm dev
+```
+
+**Windows PowerShell：**
+
+```powershell
+$env:MODELS_DEV_BASE_PATH = "/models-dev-mirror"
+pnpm dev
+```
+
+此时开发访问地址为：
+
+- `http://localhost:16000/models-dev-mirror`
+- `http://localhost:16000/models-dev-mirror/`
+
 ### 构建站点
 
 生成生产环境产物到 `packages/web/dist/`：
@@ -50,6 +89,30 @@ pnpm dev
 ```bash
 pnpm build
 ```
+
+如果部署目标不是站点根路径，而是类似 `/models-dev-mirror` 的子路径，构建时必须传入相同的 `MODELS_DEV_BASE_PATH`：
+
+**Linux / macOS：**
+
+```bash
+MODELS_DEV_BASE_PATH=/models-dev-mirror pnpm build
+```
+
+**Windows CMD：**
+
+```cmd
+set MODELS_DEV_BASE_PATH=/models-dev-mirror
+pnpm build
+```
+
+**Windows PowerShell：**
+
+```powershell
+$env:MODELS_DEV_BASE_PATH = "/models-dev-mirror"
+pnpm build
+```
+
+> 注意：如果使用子路径部署，`pnpm build` 和后续 `pnpm intranet:serve` / PM2 启动时必须使用同一个 `MODELS_DEV_BASE_PATH` 值，否则生成的资源路径与运行时路由会不一致。
 
 ### 内网部署服务
 
@@ -61,6 +124,28 @@ pnpm intranet:serve
 
 服务监听端口 3000，配合 Nginx 反向代理使用。
 
+如果要以子路径方式运行，需要在启动时传入同样的 `MODELS_DEV_BASE_PATH`：
+
+**Linux / macOS：**
+
+```bash
+MODELS_DEV_BASE_PATH=/models-dev-mirror pnpm intranet:serve
+```
+
+**Windows CMD：**
+
+```cmd
+set MODELS_DEV_BASE_PATH=/models-dev-mirror
+pnpm intranet:serve
+```
+
+**Windows PowerShell：**
+
+```powershell
+$env:MODELS_DEV_BASE_PATH = "/models-dev-mirror"
+pnpm intranet:serve
+```
+
 ---
 
 ## 开发调试
@@ -69,11 +154,16 @@ pnpm intranet:serve
 
 ```bash
 pnpm install
-cd packages/web
 pnpm dev
 ```
 
 开发服务器在 http://localhost:16000 运行。
+
+如果需要本地模拟子路径部署：
+
+```bash
+MODELS_DEV_BASE_PATH=/models-dev-mirror pnpm dev
+```
 
 ### 使用 opencode 手动测试
 
@@ -132,16 +222,63 @@ pnpm build
 - `_api.json` - 模型数据 API
 - `logos/` - Provider logo
 - `assets/` - JS/CSS 资源
+- `fonts/` - 本地字体资源
+- `social-share.png` - 本地社交分享图片
+
+### 子路径构建
+
+如果最终通过 Nginx 暴露在 `/models-dev-mirror` 之类的子路径下，构建时需要显式传入子路径：
+
+```bash
+MODELS_DEV_BASE_PATH=/models-dev-mirror pnpm build
+```
+
+构建后的 `_index.html` 会引用：
+
+- `/models-dev-mirror/assets/...`
+- `/models-dev-mirror/social-share.png`
+- `/models-dev-mirror/api.json`
+- `/models-dev-mirror/logos/...`
 
 ### 内网部署（PM2）
 
 参考 `deploy/intranet/README.md` 的完整步骤：
 
-1. 构建产物：`pnpm build`
+1. 构建产物：
+
+   - 根路径部署：`pnpm build`
+   - 子路径部署：`MODELS_DEV_BASE_PATH=/models-dev-mirror pnpm build`
+
 2. 配置日志目录权限
 3. 启动 PM2：`pm2 start deploy/intranet/ecosystem.config.cjs`
-4. 配置 Nginx 反向代理到 127.0.0.1:3000
-5. 设置开机自启：`pm2 startup && pm2 save`
+4. 如果是子路径部署，需要在 PM2 的 `env` 中也设置同样的 `MODELS_DEV_BASE_PATH`
+5. 配置 Nginx 反向代理到 127.0.0.1:3000
+6. 设置开机自启：`pm2 startup && pm2 save`
+
+#### PM2 环境变量示例
+
+如果使用子路径部署，需要在 `deploy/intranet/ecosystem.config.cjs` 的 `env` 中加入：
+
+```js
+env: {
+  PORT: "3000",
+  MODELS_DEV_BASE_PATH: "/models-dev-mirror",
+}
+```
+
+#### Nginx 子路径反代示例
+
+根目录提供了最小关键配置示例 `nginx.models-dev-mirror.conf`。使用时需要至少同步两处：
+
+1. 将 `/models-dev-mirror` 替换为你的真实部署子路径
+2. 将 `http://127.0.0.1:3066` 替换为你的实际上游地址
+
+示例的关键点是：
+
+- `location = /models-dev-mirror` 重定向到 `/models-dev-mirror/`
+- `location /models-dev-mirror/` 使用 **不带尾部斜杠** 的 `proxy_pass`
+
+这样可以避免 Nginx 在代理时错误剥离子路径前缀。
 
 ---
 
