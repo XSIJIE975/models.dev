@@ -1,13 +1,26 @@
 #!/usr/bin/env tsx
 
 import { access, readFile } from "node:fs/promises";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer as createViteServer, type ViteDevServer } from "vite";
 
+import {
+  BASE_PATH_ENV,
+  getBasePath,
+  stripBasePath,
+  withBasePath,
+} from "./base-path.js";
+
 const port = 16_000;
 const hostname = "0.0.0.0";
+const basePath = getBasePath(process.env[BASE_PATH_ENV]);
+const baseRootPath = withBasePath("/", basePath);
 const scriptDirectory = fileURLToPath(new URL(".", import.meta.url));
 const webRoot = path.resolve(scriptDirectory, "..");
 const providersRoot = path.resolve(webRoot, "..", "..", "providers");
@@ -53,6 +66,12 @@ const sendJson = (response: ServerResponse, body: unknown) => {
   response.end(JSON.stringify(body));
 };
 
+const redirect = (response: ServerResponse, location: string) => {
+  response.statusCode = 302;
+  response.setHeader("Location", location);
+  response.end();
+};
+
 const sendSvg = async (response: ServerResponse, providerId: string) => {
   const providerLogoPath = path.join(providersRoot, providerId, "logo.svg");
   const logoPath = (await pathExists(providerLogoPath))
@@ -94,8 +113,8 @@ const runViteMiddleware = async (
   request: IncomingMessage,
   response: ServerResponse
 ) => {
-  await new Promise<void>((resolve, reject) => {
-    vite.middlewares(request, response, (error) => {
+  await new Promise<void>((resolve, reject: (reason?: unknown) => void) => {
+    vite.middlewares(request, response, (error: Error | null | undefined) => {
       if (error) {
         reject(error);
         return;
@@ -123,24 +142,38 @@ const main = async () => {
       const requestUrl = createBaseUrl(request);
 
       try {
-        if (requestUrl.pathname === "/api.json") {
+        if (basePath !== "/" && requestUrl.pathname === basePath) {
+          redirect(response, baseRootPath);
+          return;
+        }
+
+        const appPath = stripBasePath(requestUrl.pathname, basePath);
+
+        if (!appPath) {
+          response.statusCode = 404;
+          response.end("Not found");
+          return;
+        }
+
+        if (appPath === "/api.json") {
           const { Providers } = await loadRenderResult(vite);
           sendJson(response, Providers);
           return;
         }
 
-        if (
-          requestUrl.pathname.startsWith("/logos/") &&
-          requestUrl.pathname.endsWith(".svg")
-        ) {
+        if (appPath.startsWith("/logos/") && appPath.endsWith(".svg")) {
           const providerId = decodeURIComponent(
-            requestUrl.pathname.slice("/logos/".length, -".svg".length)
+            appPath.slice("/logos/".length, -".svg".length)
           );
           await sendSvg(response, providerId);
           return;
         }
 
-        if (requestUrl.pathname === "/") {
+        if (
+          appPath === "/" ||
+          appPath === "/index" ||
+          appPath === "/index.html"
+        ) {
           await sendIndexHtml(requestUrl, response, vite);
           return;
         }

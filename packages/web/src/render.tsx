@@ -8,6 +8,8 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { BASE_PATH_ENV, getBasePath, withBasePath } from "./base-path.js";
+
 const scriptDirectory = fileURLToPath(new URL(".", import.meta.url));
 
 // Helper to check if file exists (async)
@@ -58,6 +60,11 @@ const loadProviderSvg = async (providerId: string): Promise<string | null> => {
 };
 
 export const render = async () => {
+  const basePath = getBasePath(process.env[BASE_PATH_ENV]);
+  const homeUrl = withBasePath("/", basePath);
+  const apiUrl = withBasePath("/api.json", basePath);
+  const logosPathPattern = withBasePath("/logos/{provider}.svg", basePath);
+  const anthropicLogoUrl = withBasePath("/logos/anthropic.svg", basePath);
   const Providers = await generate(
     path.join(scriptDirectory, "..", "..", "..", "providers")
   );
@@ -495,9 +502,9 @@ export const render = async () => {
         </div>
         <div class="body">
           <p>
-            <a href="/">Models.dev</a> is a comprehensive open-source database of
-            AI model specifications, pricing, and features.
-          </p>
+             <a href={homeUrl}>Models.dev</a> is a comprehensive open-source database of
+             AI model specifications, pricing, and features.
+           </p>
           <p>
             There&apos;s no single database with information about all the
             available AI models. We started Models.dev as a community-contributed
@@ -515,9 +522,9 @@ export const render = async () => {
           <p>You can access this data through an API.</p>
           <div class="code-block">
             <code>
-              curl <a href="/api.json">https://models.dev/api.json</a>
-            </code>
-          </div>
+               curl <a href={apiUrl}>https://models.dev/api.json</a>
+             </code>
+           </div>
           <p>
             Use the <b>Model ID</b> field to do a lookup on any model; it&apos;s
             the identifier used by{" "}
@@ -532,16 +539,16 @@ export const render = async () => {
           </p>
           <h2>Logos</h2>
           <p>
-            Provider logos are available at <code>/logos/{`{provider}`}.svg</code>{" "}
-            where <code>{`{provider}`}</code> is the <b>Provider ID</b>.
-          </p>
-          <div class="code-block">
-            <code>
-              curl{" "}
-              <a href="/logos/anthropic.svg">
-                https://models.dev/logos/anthropic.svg
-              </a>
-            </code>
+             Provider logos are available at <code>{logosPathPattern}</code>{" "}
+             where <code>{`{provider}`}</code> is the <b>Provider ID</b>.
+           </p>
+           <div class="code-block">
+             <code>
+               curl{" "}
+               <a href={anthropicLogoUrl}>
+                 https://models.dev/logos/anthropic.svg
+               </a>
+             </code>
           </div>
           <p>
             If we don't have a provider's logo, a default logo is served instead.
