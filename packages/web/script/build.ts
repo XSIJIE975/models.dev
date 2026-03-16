@@ -1,50 +1,96 @@
-#!/usr/bin/env bun
+#!/usr/bin/env tsx
 
-import { Rendered, Providers } from "../src/render";
-import fs from "fs/promises";
-import path from "path";
-import { $ } from "bun";
+import { access, copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { execa } from "execa";
+import glob from "fast-glob";
 
-await fs.rm("./dist", { recursive: true, force: true });
-await Bun.build({
-  entrypoints: ["./index.html"],
-  outdir: "dist",
-  target: "bun",
-});
+const scriptDirectory = fileURLToPath(new URL(".", import.meta.url));
+const webRoot = path.resolve(scriptDirectory, "..");
+const providersRoot = path.resolve(webRoot, "..", "..", "providers");
+const distRoot = path.join(webRoot, "dist");
 
-for await (const file of new Bun.Glob("./public/*").scan()) {
-  await Bun.write(file.replace("./public/", "./dist/"), Bun.file(file));
-}
-
-// Copy provider logos to dist/logos/
-await fs.mkdir("./dist/logos", { recursive: true });
-
-// First, copy the default logo
-const defaultLogoPath = "../../providers/logo.svg";
-const defaultLogo = Bun.file(defaultLogoPath);
-if (await defaultLogo.exists()) {
-  await Bun.write("./dist/logos/default.svg", defaultLogo);
-}
-
-// Then copy provider-specific logos
-const providersDir = "../../providers";
-const entries = await fs.readdir(providersDir, { withFileTypes: true });
-for (const entry of entries) {
-  if (entry.isDirectory()) {
-    const provider = entry.name;
-    const logoPath = path.join(providersDir, provider, "logo.svg");
-    const logoFile = Bun.file(logoPath);
-
-    if (await logoFile.exists()) {
-      await Bun.write(`./dist/logos/${provider}.svg`, logoFile);
-    }
+const pathExists = async (targetPath: string) => {
+  try {
+    await access(targetPath);
+    return true;
+  } catch {
+    return false;
   }
-}
+};
 
-let html = await Bun.file("./dist/index.html").text();
-html = html.replace("<!--static-->", Rendered);
-await Bun.write("./dist/index.html", html);
-await Bun.write("./dist/api.json", JSON.stringify(Providers));
+const copyProviderLogos = async () => {
+  const logosDirectory = path.join(distRoot, "logos");
+  await mkdir(logosDirectory, { recursive: true });
 
-await $`mv ./dist/index.html ./dist/_index.html`;
-await $`mv ./dist/api.json ./dist/_api.json`;
+  const defaultLogoPath = path.join(providersRoot, "logo.svg");
+  if (await pathExists(defaultLogoPath)) {
+    await copyFile(defaultLogoPath, path.join(logosDirectory, "default.svg"));
+  }
+
+  const providerLogos = await glob("*/logo.svg", {
+    cwd: providersRoot,
+    onlyFiles: true,
+  });
+
+  for (const relativeLogoPath of providerLogos) {
+    const providerId = path.basename(path.dirname(relativeLogoPath));
+    const sourcePath = path.join(providersRoot, relativeLogoPath);
+    const destinationPath = path.join(logosDirectory, `${providerId}.svg`);
+    await copyFile(sourcePath, destinationPath);
+  }
+};
+
+const copyFavicon = async () => {
+  const faviconMatches = await glob("favicon.svg", {
+    cwd: path.join(webRoot, "public"),
+    onlyFiles: true,
+  });
+
+  if (faviconMatches.length === 0) {
+    return;
+  }
+
+  await copyFile(
+    path.join(webRoot, "public", faviconMatches[0]),
+    path.join(distRoot, "favicon.svg")
+  );
+};
+
+const main = async () => {
+  await rm(distRoot, { recursive: true, force: true });
+  await execa("vite", ["build"], {
+    cwd: webRoot,
+    stdio: "inherit",
+  });
+
+  await copyProviderLogos();
+  await copyFavicon();
+
+  const { default: render } = (await import("../src/render.tsx")) as {
+    default: () => Promise<{
+      Rendered: string;
+      Providers: unknown;
+    }>;
+  };
+  const { Rendered, Providers } = await render();
+
+  const builtHtmlPath = path.join(distRoot, "index.html");
+  const injectedHtml = (await readFile(builtHtmlPath, "utf8")).replace(
+    "<!--static-->",
+    Rendered
+  );
+
+  await writeFile(builtHtmlPath, injectedHtml, "utf8");
+  await writeFile(
+    path.join(distRoot, "api.json"),
+    JSON.stringify(Providers),
+    "utf8"
+  );
+
+  await rename(builtHtmlPath, path.join(distRoot, "_index.html"));
+  await rename(path.join(distRoot, "api.json"), path.join(distRoot, "_api.json"));
+};
+
+void main();
