@@ -1,29 +1,27 @@
 {
   "type": "module",
   "private": true,
-  "workspaces": {
-    "packages": [
-      "packages/*"
-    ],
-    "catalog": {
-      "typescript": "5.8.2",
-      "@types/node": "22.13.9",
-      "@types/bun": "1.3.0",
-      "zod": "3.24.2",
-      "ai": "4.3.16",
-      "@tsconfig/bun": "^1.0.8"
-    }
-  },
   "scripts": {
-    "validate": "bun ./packages/core/script/validate.ts",
-    "helicone:generate": "bun ./packages/core/script/generate-helicone.ts",
-    "venice:generate": "bun ./packages/core/script/generate-venice.ts",
-    "vercel:generate": "bun ./packages/core/script/generate-vercel.ts",
-    "wandb:generate": "bun ./packages/core/script/generate-wandb.ts",
-    "intranet:serve": "bun ./deploy/intranet/server.ts"
+    "validate": "tsx ./packages/core/script/validate.ts",
+    "helicone:generate": "tsx ./packages/core/script/generate-helicone.ts",
+    "venice:generate": "tsx ./packages/core/script/generate-venice.ts",
+    "vercel:generate": "tsx ./packages/core/script/generate-vercel.ts",
+    "wandb:generate": "tsx ./packages/core/script/generate-wandb.ts",
+    "friendli:generate": "tsx ./packages/core/script/generate-friendli.ts",
+    "ollama-cloud:generate": "tsx ./packages/core/script/generate-ollama-cloud.ts",
+    "intranet:serve": "tsx ./deploy/intranet/server.ts",
+    "build": "pnpm --dir packages/web build",
+    "dev": "pnpm --dir packages/web dev"
   },
   "dependencies": {
     "@cloudflare/workers-types": "^4.20250801.0",
     "sst": "3.17.23"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0",
+    "@tsconfig/node22": "^22.0.0",
+    "typescript": "5.8.2",
+    "@types/node": "22.13.9",
+    "zod": "3.24.2"
   }
 }

@@ -10,8 +10,7 @@ export default $config({
   async run() {
     const { spawnSync } = await import("child_process");
 
-    const ret = spawnSync("./script/build.ts", [], {
-      cwd: "./packages/web",
+    const ret = spawnSync("pnpm", ["--dir", "./packages/web", "build"], {
       stdio: "inherit",
     });
     if (ret.status !== 0) throw new Error("Build failed");
